@@ -1,11 +1,12 @@
 {
-"name": "gonaf-bot",
-"version": "1.0.0",
-"main": "index.js",
-"scripts": {
-"start": "node index.js"
-},
-"dependencies": {
-"node-telegram-bot-api": "^0.66.0"
-}
+  "name": "gonaf-plus",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.64.0",
+    "sqlite3": "^5.1.6"
+  }
 }
