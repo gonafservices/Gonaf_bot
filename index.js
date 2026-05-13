@@ -10,7 +10,7 @@ polling: { autoStart: true }
 const ADMIN_ID = process.env.ADMIN_ID;
 
 // ================= DB =================
-const db = new sqlite3.Database('/tmp/gonaf.db');
+const db = new sqlite3.Database('./gonaf.db');
 
 db.run(`
 CREATE TABLE IF NOT EXISTS transactions (
@@ -89,7 +89,7 @@ return `
 `;
 }
 
-// ================= START (INLINE) =================
+// ================= START =================
 bot.onText(/\/start/, (msg) => {
 const chatId = msg.chat.id;
 
@@ -112,10 +112,13 @@ inline_keyboard: [
 });
 });
 
-// ================= INLINE HANDLER =================
+// ================= SERVICE CALLBACK =================
 bot.on('callback_query', (q) => {
+
 const chatId = q.message.chat.id;
 const data = q.data;
+
+if (!["Wise","PayPal","Cash App","Pana","Moncash"].includes(data)) return;
 
 bot.answerCallbackQuery(q.id);
 
@@ -126,8 +129,9 @@ state[chatId].step = "amount";
 bot.sendMessage(chatId, "💰 Entrez le montant en USD :");
 });
 
-// ================= FLOW =================
+// ================= AMOUNT =================
 bot.on('message', (msg) => {
+
 const chatId = msg.chat.id;
 const text = msg.text;
 
@@ -135,7 +139,7 @@ if (!text || text.startsWith('/')) return;
 
 if (!state[chatId]) state[chatId] = {};
 
-// ========= AMOUNT =========
+// STEP AMOUNT
 if (state[chatId].step === "amount") {
 
 const usd = parseFloat(text);
@@ -153,14 +157,14 @@ header() + "\n💳 Choisissez méthode de paiement :",
 reply_markup: {
 inline_keyboard: getMethods(state[chatId].service).map(m => ([{
 text: m,
-callback_data: `method_${m}`
+callback_data: "method_" + m
 }]))
 }
 });
 }
 });
 
-// ================= METHOD INLINE =================
+// ================= METHOD CALLBACK =================
 bot.on('callback_query', (q) => {
 
 const chatId = q.message.chat.id;
@@ -172,22 +176,18 @@ const method = data.replace("method_", "");
 
 bot.answerCallbackQuery(q.id);
 
-state[chatId].method = method;
-state[chatId].step = "proof";
-
 const orderId = genId();
+
+state[chatId].method = method;
 state[chatId].orderId = orderId;
+state[chatId].step = "proof";
 
 const htg = state[chatId].amount * taux;
 const total = htg * (1 + frais);
 
-state[chatId].htg = htg;
-state[chatId].total = total;
-
 // SAVE DB
 db.run(`
-INSERT INTO transactions
-(order_id, user_id, service, amount, method, status, date)
+INSERT INTO transactions (order_id, user_id, service, amount, method, status, date)
 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 [
 orderId,
@@ -210,10 +210,10 @@ ${paymentInfo[method]}
 
 📸 Envoyez la preuve (photo)`);
 });
-});
 
 // ================= PHOTO =================
 bot.on('photo', (msg) => {
+
 const chatId = msg.chat.id;
 
 if (!state[chatId] || state[chatId].step !== "proof") return;
@@ -223,7 +223,7 @@ db.run(
 [state[chatId].orderId]
 );
 
-bot.sendMessage(chatId, "⏳ Preuve reçue. En attente validation.");
+bot.sendMessage(chatId, "⏳ Preuve reçue.");
 
 bot.sendMessage(ADMIN_ID,
 `🚨 NEW ORDER
@@ -233,7 +233,7 @@ Service: ${state[chatId].service}
 Amount: ${state[chatId].amount}$`);
 });
 
-// ================= ADMIN COMMANDS =================
+// ================= ADMIN =================
 bot.onText(/\/received (GNF-\d+)/, (msg, match) => {
 if (msg.chat.id != ADMIN_ID) return;
 bot.sendMessage(match[1], "📩 Preuve reçue.");
@@ -247,15 +247,11 @@ bot.sendMessage(match[1], "🔎 En cours de vérification.");
 bot.onText(/\/done (GNF-\d+)/, (msg, match) => {
 if (msg.chat.id != ADMIN_ID) return;
 
-const orderId = match[1];
+db.get(`SELECT * FROM transactions WHERE order_id = ?`, [match[1]], (err, row) => {
 
-db.get(`SELECT * FROM transactions WHERE order_id = ?`, [orderId], (err, row) => {
+if (!row) return bot.sendMessage(ADMIN_ID, "❌ Order non trouvé");
 
-if (!row) {
-return bot.sendMessage(ADMIN_ID, "❌ Order non trouvé");
-}
-
-db.run(`UPDATE transactions SET status = "DONE" WHERE order_id = ?`, [orderId]);
+db.run(`UPDATE transactions SET status = "DONE" WHERE order_id = ?`, [match[1]]);
 
 bot.sendMessage(row.user_id, receipt(row));
 bot.sendMessage(ADMIN_ID, "✅ Reçu envoyé");
@@ -266,4 +262,4 @@ bot.sendMessage(ADMIN_ID, "✅ Reçu envoyé");
 process.on('uncaughtException', console.log);
 process.on('unhandledRejection', console.log);
 
-console.log("🚀 V8.2 INLINE PRO ONLINE");
+console.log("🚀 V8.2 FIXED ONLINE");
