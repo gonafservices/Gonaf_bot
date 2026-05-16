@@ -66,7 +66,7 @@ function calcTotal(amount, method) {
   if (method === "Moncash") {
 
     const htg = amount * taux;
-    const total = htg - (htg * frais);
+    const total = htg + (htg * frais);
 
     return {
       total: total.toFixed(2),
@@ -75,7 +75,7 @@ function calcTotal(amount, method) {
   }
 
   // OTHERS = USD
-  const total = amount - (amount * frais);
+  const total = amount + (amount * frais);
 
   return {
     total: total.toFixed(2),
