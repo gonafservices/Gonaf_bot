@@ -4,286 +4,458 @@ const TelegramBot = require('node-telegram-bot-api');
 const sqlite3 = require('sqlite3').verbose();
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, {
-polling: { autoStart: true }
+  polling: true
 });
 
 const ADMIN_ID = process.env.ADMIN_ID;
 
-// ================= DB =================
+// ================= DATABASE =================
 const db = new sqlite3.Database('./gonaf.db');
 
-db.run(`
-CREATE TABLE IF NOT EXISTS transactions (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-order_id TEXT,
-user_id TEXT,
-service TEXT,
-amount REAL,
-method TEXT,
-status TEXT,
-date TEXT
-)
-`);
+db.serialize(() => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT,
+      user_id TEXT,
+      service TEXT,
+      amount REAL,
+      method TEXT,
+      status TEXT,
+      date TEXT
+    )
+  `);
+});
 
 // ================= VARIABLES =================
 const taux = parseFloat(process.env.TAUX) - 2;
 const frais = parseFloat(process.env.FRAIS);
 
-// ================= PAYMENT INFO =================
+// ================= PAYMENT INFOS =================
 const paymentInfo = {
-"PayPal": process.env.PAYPAL1_INFO,
-"Pana": process.env.PANA_INFO,
-"Cash App": process.env.CASHAPP_INFO,
-"Wise": process.env.WISE_INFO
+  "Moncash": process.env.MONCASH_INFO,
+  "PayPal": process.env.PAYPAL_INFO,
+  "Pana": process.env.PANA_INFO,
+  "Cash App": process.env.CASHAPP_INFO,
+  "Wise": process.env.WISE_INFO
 };
 
-// ================= STATE =================
-let state = {};
-let counter = 0;
+// ================= STATES =================
+let userState = {};
+let orderCounter = 1;
 
 // ================= HELPERS =================
 function now() {
-return new Date().toLocaleString("fr-FR", {
-timeZone: "America/Port-au-Prince"
-});
+  return new Date().toLocaleString("fr-FR", {
+    timeZone: "America/Port-au-Prince"
+  });
 }
 
-function genId() {
-counter++;
-return `GNF-${counter}`;
+function generateOrderId() {
+  return `GNF-${orderCounter++}`;
 }
 
 function getMethods(service) {
-return ["Moncash", "PayPal", "Cash App", "Pana", "Wise"]
-.filter(m => m !== service);
-}
-
-function header() {
-return `📊 Taux: ${taux.toFixed(2)} HTG/USD | 💸 Frais: ${(frais * 100)}%`;
+  return ["Moncash", "PayPal", "Pana", "Cash App", "Wise"]
+    .filter(m => m !== service);
 }
 
 function calcTotal(amount, method) {
-const usd = amount;
 
-if (method === "Moncash") {
-const htg = usd * taux;
-return {
-currency: "HTG",
-total: htg * (1 + frais)
-};
+  // MONCASH = HTG
+  if (method === "Moncash") {
+
+    const htg = amount * taux;
+    const total = htg - (htg * frais);
+
+    return {
+      total: total.toFixed(2),
+      currency: "HTG"
+    };
+  }
+
+  // OTHERS = USD
+  const total = amount - (amount * frais);
+
+  return {
+    total: total.toFixed(2),
+    currency: "USD"
+  };
 }
 
-return {
-currency: "USD",
-total: usd * (1 + frais)
-};
-}
+function receipt(data, totalData) {
 
-function receipt(row, totalObj) {
-return `
+  return `
 ━━━━━━━━━━━━━━━
 🧾 REÇU GONAF+
 
-📦 Order: ${row.order_id}
-👤 Client: ${row.user_id}
-💼 Service: ${row.service}
+📦 ID Commande : ${data.order_id}
 
-💳 Méthode: ${row.method}
-💵 Total: ${totalObj.total.toFixed(2)} ${totalObj.currency}
+👤 Client ID : ${data.user_id}
 
-📅 Date: ${row.date}
+💼 Service :
+${data.service}
+
+💳 Méthode :
+${data.method}
+
+💰 Montant :
+${totalData.total} ${totalData.currency}
+
+📅 Date :
+${data.date}
 
 ━━━━━━━━━━━━━━━
-📞 WhatsApp: +1 849 775 7751
+📞 Support WhatsApp
++1 849 785 7751
+━━━━━━━━━━━━━━━
 `;
 }
 
 // ================= START =================
 bot.onText(/\/start/, (msg) => {
-const chatId = msg.chat.id;
 
-state[chatId] = {};
+  const chatId = msg.chat.id;
 
-bot.sendMessage(chatId,
-`👋 BIENVENUE SUR GONAF+
+  userState[chatId] = {};
 
-💳 Choisissez votre service :`,
-{
-reply_markup: {
-inline_keyboard: [
-[{ text: "💙 PayPal", callback_data: "PayPal" }],
-[{ text: "💸 Cash App", callback_data: "Cash App" }],
-[{ text: "🟣 Pana", callback_data: "Pana" }],
-[{ text: "💳 Wise", callback_data: "Wise" }]
-]
-}
-});
-});
+  bot.sendMessage(
+    chatId,
+    `👋 Bienvenue sur Gonaf+
 
-// ================= SERVICE =================
-bot.on('callback_query', (q) => {
+Votre solution de recharge rapide, sécurisée et disponible 24/7.
 
-const chatId = q.message.chat.id;
-const data = q.data;
-
-if (!["PayPal", "Cash App", "Pana", "Wise"].includes(data)) return;
-
-bot.answerCallbackQuery(q.id);
-
-state[chatId] = state[chatId] || {};
-state[chatId].service = data;
-state[chatId].step = "amount";
-
-bot.sendMessage(chatId, "💰 Entrez le montant en USD :");
+💳 Veuillez sélectionner le service que vous souhaitez recharger :`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "💳 Recharge Wise", callback_data: "Wise" }],
+          [{ text: "💙 Recharge PayPal", callback_data: "PayPal" }],
+          [{ text: "🟣 Recharge Pana", callback_data: "Pana" }],
+          [{ text: "💸 Recharge Cash App", callback_data: "Cash App" }]
+        ]
+      }
+    }
+  );
 });
 
-// ================= MESSAGE FLOW =================
-bot.on('message', (msg) => {
+// ================= CALLBACKS =================
+bot.on('callback_query', (query) => {
 
-const chatId = msg.chat.id;
-const text = msg.text;
+  const chatId = query.message.chat.id;
+  const data = query.data;
 
-if (!text || text.startsWith('/')) return;
-if (!state[chatId]) return;
+  bot.answerCallbackQuery(query.id);
 
-// AMOUNT STEP
-if (state[chatId].step === "amount") {
+  // ===== SERVICE =====
+  if (["Wise", "PayPal", "Pana", "Cash App"].includes(data)) {
 
-const usd = parseFloat(text);
+    userState[chatId] = {
+      service: data,
+      step: "amount"
+    };
 
-if (isNaN(usd)) {
-return bot.sendMessage(chatId, "❌ Montant invalide");
-}
+    return bot.sendMessage(
+      chatId,
+      `💰 Veuillez entrer le montant que vous souhaitez recharger (USD).`
+    );
+  }
 
-state[chatId].amount = usd;
-state[chatId].step = "method";
+  // ===== PAYMENT METHOD =====
+  if (data.startsWith("method_")) {
 
-return bot.sendMessage(chatId,
-header() + "\n💳 Choisissez méthode de paiement :",
-{
-reply_markup: {
-inline_keyboard: getMethods(state[chatId].service).map(m => ([{
-text: m,
-callback_data: "method_" + m
-}]))
-}
-});
-}
-});
+    const method = data.replace("method_", "");
 
-// ================= METHOD =================
-bot.on('callback_query', (q) => {
+    userState[chatId].method = method;
+    userState[chatId].step = "proof";
 
-const chatId = q.message.chat.id;
-const data = q.data;
+    const amount = userState[chatId].amount;
 
-if (!data.startsWith("method_")) return;
+    const totalData = calcTotal(amount, method);
 
-const method = data.replace("method_", "");
+    const orderId = generateOrderId();
 
-bot.answerCallbackQuery(q.id);
+    userState[chatId].orderId = orderId;
 
-const orderId = genId();
+    // SAVE DB
+    db.run(`
+      INSERT INTO transactions
+      (order_id, user_id, service, amount, method, status, date)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      orderId,
+      chatId,
+      userState[chatId].service,
+      amount,
+      method,
+      "PENDING",
+      now()
+    ]);
 
-state[chatId].method = method;
-state[chatId].orderId = orderId;
-state[chatId].step = "proof";
-
-const totalObj = calcTotal(state[chatId].amount, method);
-
-// SAVE DB
-db.run(`
-INSERT INTO transactions
-(order_id, user_id, service, amount, method, status, date)
-VALUES (?, ?, ?, ?, ?, ?, ?)`,
-[
-orderId,
-chatId,
-state[chatId].service,
-state[chatId].amount,
-method,
-"PENDING",
-now()
-]);
-
-bot.sendMessage(chatId,
-`📩 Informations de paiement :
+    return bot.sendMessage(
+      chatId,
+      `📩 Informations de paiement
 
 ${paymentInfo[method]}
 
-💰 Total: ${totalObj.total.toFixed(2)} ${totalObj.currency}
+━━━━━━━━━━━━━━━
+📊 Taux du jour :
+${taux.toFixed(2)} HTG/USD
 
-📦 Order ID: ${orderId}
+💸 Frais Gonaf+ :
+${(frais * 100)}%
 
-📸 Envoyez la preuve de paiement (photo)`);
+💰 Total à envoyer :
+${totalData.total} ${totalData.currency}
+
+📦 ID Commande :
+${orderId}
+━━━━━━━━━━━━━━━
+
+📸 Veuillez maintenant envoyer une capture ou photo de votre paiement afin de finaliser votre commande.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "📞 Support WhatsApp",
+                url: "https://wa.me/18497857751"
+              }
+            ]
+          ]
+        }
+      }
+    );
+  }
+
+});
+
+// ================= TEXT FLOW =================
+bot.on('message', (msg) => {
+
+  const chatId = msg.chat.id;
+  const text = msg.text;
+
+  if (!text) return;
+  if (text.startsWith('/')) return;
+
+  if (!userState[chatId]) return;
+
+  // ===== AMOUNT =====
+  if (userState[chatId].step === "amount") {
+
+    const usd = parseFloat(text);
+
+    if (isNaN(usd)) {
+
+      return bot.sendMessage(
+        chatId,
+        `❌ Montant invalide.
+
+Veuillez entrer un montant correct en USD.`
+      );
+    }
+
+    userState[chatId].amount = usd;
+    userState[chatId].step = "method";
+
+    return bot.sendMessage(
+      chatId,
+      `💳 Veuillez choisir votre méthode de paiement :`,
+      {
+        reply_markup: {
+          inline_keyboard: getMethods(userState[chatId].service)
+            .map(method => ([
+              {
+                text: method,
+                callback_data: `method_${method}`
+              }
+            ]))
+        }
+      }
+    );
+  }
+
 });
 
 // ================= PHOTO =================
 bot.on('photo', (msg) => {
 
-const chatId = msg.chat.id;
+  const chatId = msg.chat.id;
 
-if (!state[chatId] || state[chatId].step !== "proof") return;
+  if (!userState[chatId]) return;
+  if (userState[chatId].step !== "proof") return;
 
-db.run(
-`UPDATE transactions SET status = "PROOF_RECEIVED" WHERE order_id = ?`,
-[state[chatId].orderId]
-);
+  const photo = msg.photo[msg.photo.length - 1].file_id;
 
-bot.sendMessage(chatId, "⏳ Preuve reçue.");
+  db.run(
+    `UPDATE transactions SET status = "PROOF_RECEIVED" WHERE order_id = ?`,
+    [userState[chatId].orderId]
+  );
 
-bot.sendMessage(ADMIN_ID,
-`🚨 NEW ORDER
-Order: ${state[chatId].orderId}
-User: ${chatId}
-Service: ${state[chatId].service}
-Amount: ${state[chatId].amount}`);
+  bot.sendMessage(
+    chatId,
+    `✅ Votre preuve de paiement a bien été reçue.
+
+Notre équipe procède actuellement à la vérification de votre transaction.`
+  );
+
+  // SEND PHOTO TO ADMIN
+  bot.sendPhoto(
+    ADMIN_ID,
+    photo,
+    {
+      caption:
+`🚨 NOUVELLE PREUVE
+
+📦 Order :
+${userState[chatId].orderId}
+
+👤 Client ID :
+${chatId}
+
+💼 Service :
+${userState[chatId].service}
+
+💳 Méthode :
+${userState[chatId].method}
+
+💰 Montant :
+${userState[chatId].amount}$
+
+📅 ${now()}`
+    }
+  );
+
 });
 
-// ================= ADMIN RECEIVED =================
+// ================= RECEIVED =================
 bot.onText(/^\/received (GNF-\d+)$/, (msg, match) => {
 
-if (msg.chat.id != ADMIN_ID) return;
+  if (msg.chat.id != ADMIN_ID) return;
 
-db.get(`SELECT * FROM transactions WHERE order_id = ?`, [match[1]], (err, row) => {
+  const orderId = match[1];
 
-if (!row) return bot.sendMessage(ADMIN_ID, "❌ Order not found");
+  db.get(
+    `SELECT * FROM transactions WHERE order_id = ?`,
+    [orderId],
+    (err, row) => {
 
-bot.sendMessage(row.user_id, "📩 Preuve reçue.");
-bot.sendMessage(ADMIN_ID, "✅ Received sent");
+      if (!row) {
+
+        return bot.sendMessage(
+          ADMIN_ID,
+          `❌ Commande introuvable.`
+        );
+      }
+
+      db.run(
+        `UPDATE transactions SET status = "RECEIVED" WHERE order_id = ?`,
+        [orderId]
+      );
+
+      bot.sendMessage(
+        row.user_id,
+        `📩 Nous avons bien reçu votre preuve de paiement.
+
+Votre transaction est actuellement en attente de validation.`
+      );
+
+      bot.sendMessage(
+        ADMIN_ID,
+        `✅ Notification envoyée au client.`
+      );
+
+    }
+  );
+
 });
-});
 
-// ================= ADMIN CONFIRM =================
+// ================= CONFIRM =================
 bot.onText(/^\/confirm (GNF-\d+)$/, (msg, match) => {
 
-if (msg.chat.id != ADMIN_ID) return;
+  if (msg.chat.id != ADMIN_ID) return;
 
-db.run(`UPDATE transactions SET status = "CONFIRMED" WHERE order_id = ?`, [match[1]]);
+  const orderId = match[1];
 
-bot.sendMessage(ADMIN_ID, "🔎 Confirmed");
+  db.get(
+    `SELECT * FROM transactions WHERE order_id = ?`,
+    [orderId],
+    (err, row) => {
+
+      if (!row) {
+
+        return bot.sendMessage(
+          ADMIN_ID,
+          `❌ Commande introuvable.`
+        );
+      }
+
+      db.run(
+        `UPDATE transactions SET status = "CONFIRMED" WHERE order_id = ?`,
+        [orderId]
+      );
+
+      bot.sendMessage(
+        row.user_id,
+        `🔎 Votre transaction est actuellement en cours de vérification par notre équipe.`
+      );
+
+      bot.sendMessage(
+        ADMIN_ID,
+        `✅ Confirmation envoyée au client.`
+      );
+
+    }
+  );
+
 });
 
-// ================= ADMIN DONE =================
+// ================= DONE =================
 bot.onText(/^\/done (GNF-\d+)$/, (msg, match) => {
 
-if (msg.chat.id != ADMIN_ID) return;
+  if (msg.chat.id != ADMIN_ID) return;
 
-db.get(`SELECT * FROM transactions WHERE order_id = ?`, [match[1]], (err, row) => {
+  const orderId = match[1];
 
-if (!row) return bot.sendMessage(ADMIN_ID, "❌ Order not found");
+  db.get(
+    `SELECT * FROM transactions WHERE order_id = ?`,
+    [orderId],
+    (err, row) => {
 
-const totalObj = calcTotal(row.amount, row.method);
+      if (!row) {
 
-db.run(`UPDATE transactions SET status = "DONE" WHERE order_id = ?`, [match[1]]);
+        return bot.sendMessage(
+          ADMIN_ID,
+          `❌ Commande introuvable.`
+        );
+      }
 
-bot.sendMessage(row.user_id, receipt(row, totalObj));
-bot.sendMessage(ADMIN_ID, "✅ Done + receipt sent");
-});
+      const totalData = calcTotal(row.amount, row.method);
+
+      db.run(
+        `UPDATE transactions SET status = "DONE" WHERE order_id = ?`,
+        [orderId]
+      );
+
+      bot.sendMessage(
+        row.user_id,
+        `✅ Votre recharge a été effectuée avec succès.\n\n${receipt(row, totalData)}`
+      );
+
+      bot.sendMessage(
+        ADMIN_ID,
+        `✅ Transaction terminée et reçu envoyé.`
+      );
+
+    }
+  );
+
 });
 
 // ================= SAFE =================
 process.on('uncaughtException', console.log);
 process.on('unhandledRejection', console.log);
 
-console.log("🚀 V8.3 FINAL ONLINE");
+console.log("🚀 GONAF+ BOT ONLINE");
