@@ -34,7 +34,12 @@ const frais = parseFloat(process.env.FRAIS);
 // ================= PAYMENT INFOS =================
 const paymentInfo = {
   "Moncash": process.env.MONCASH_INFO,
-  "PayPal": process.env.PAYPAL_INFO,
+  "PayPal":
+`PayPal 1 :
+${process.env.PAYPAL1_INFO}
+
+PayPal 2 :
+${process.env.PAYPAL2_INFO}`,
   "Pana": process.env.PANA_INFO,
   "Cash App": process.env.CASHAPP_INFO,
   "Wise": process.env.WISE_INFO
