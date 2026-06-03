@@ -286,25 +286,74 @@ if (usd > 50) {
   );
 }
     userState[chatId].amount = usd;
-    userState[chatId].step = "method";
+userState[chatId].step = "account_info";
 
-    return bot.sendMessage(
-      chatId,
-      `💳 Veuillez choisir votre méthode de paiement :`,
-      {
-        reply_markup: {
-          inline_keyboard: getMethods(userState[chatId].service)
-            .map(method => ([
-              {
-                text: method,
-                callback_data: `method_${method}`
-              }
-            ]))
-        }
-      }
-    );
+let askMessage = "";
+
+switch (userState[chatId].service) {
+
+  case "Wise":
+    askMessage =
+      "📧 Veuillez entrer votre email Wise ou votre WiseTag.";
+    break;
+
+  case "PayPal":
+    askMessage =
+      "📧 Veuillez entrer votre email PayPal.";
+    break;
+
+  case "Cash App":
+    askMessage =
+      "💲 Veuillez entrer votre Cashtag Cash App.";
+    break;
+
+  case "Pana":
+    askMessage =
+`🟣 Veuillez envoyer :
+
+Nom :
+Prénom :
+Email :
+Téléphone :`;
+    break;
+
+  case "Meru":
+    askMessage =
+`🏦 Veuillez envoyer :
+
+Nom :
+Prénom :
+Email :
+Téléphone :
+$MeruTag :`;
+    break;
+}
+
+return bot.sendMessage(chatId, askMessage);
   }
+// ===== ACCOUNT INFO =====
 
+if (userState[chatId].step === "account_info") {
+
+  userState[chatId].accountInfo = text;
+  userState[chatId].step = "method";
+
+  return bot.sendMessage(
+    chatId,
+    `💳 Veuillez choisir votre méthode de paiement :`,
+    {
+      reply_markup: {
+        inline_keyboard: getMethods(userState[chatId].service)
+          .map(method => ([
+            {
+              text: method,
+              callback_data: `method_${method}`
+            }
+          ]))
+      }
+    }
+  );
+}
 });
 
 // ================= PHOTO =================
@@ -407,6 +456,9 @@ ${chatId}
 
 💼 Service :
 ${userState[chatId].service}
+
+📋 Informations Client :
+${userState[chatId].accountInfo}
 
 💳 Méthode :
 ${userState[chatId].method}
