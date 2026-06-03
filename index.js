@@ -382,7 +382,6 @@ Notre équipe procède actuellement à la vérification de votre transaction.`
     ADMIN_ID,
     photo,
     {
-      caption:
 caption:
 `🚨 NOUVELLE PREUVE
 
