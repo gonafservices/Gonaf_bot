@@ -49,6 +49,7 @@ ${process.env.PAYPAL2_INFO}`,
 // ================= STATES =================
 let userState = {};
 let orderCounter = 1;
+let adminState = {};
 
 // ================= HELPERS =================
 function now() {
@@ -141,11 +142,12 @@ Votre solution de recharge rapide, sécurisée et disponible 24/7.
     {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "💳 Recharge Wise", callback_data: "Wise" }],
-          [{ text: "💙 Recharge PayPal", callback_data: "PayPal" }],
-          [{ text: "🟣 Recharge Pana", callback_data: "Pana" }],
-          [{ text: "💸 Recharge Cash App", callback_data: "Cash App" }]
-        ]
+  [{ text: "💳 Recharge Wise", callback_data: "Wise" }],
+  [{ text: "💙 Recharge PayPal", callback_data: "PayPal" }],
+  [{ text: "🟣 Recharge Pana", callback_data: "Pana" }],
+  [{ text: "💸 Recharge Cash App", callback_data: "Cash App" }],
+  [{ text: "🏦 Recharge Meru", callback_data: "Meru" }]
+]
       }
     }
   );
@@ -216,7 +218,7 @@ ${paymentInfo[method]}
 ${taux.toFixed(2)} HTG/USD
 
 💸 Frais Gonaf+ :
-${(frais * 100)}%
+${(frais * 100).toFixed(0)}%
 
 💰 Total à envoyer :
 ${totalData.total} ${totalData.currency}
@@ -295,7 +297,63 @@ Veuillez entrer un montant correct en USD.`
 bot.on('photo', (msg) => {
 
   const chatId = msg.chat.id;
+// ===== ADMIN DONE PHOTO =====
 
+if (
+  chatId == ADMIN_ID &&
+  adminState[chatId] &&
+  adminState[chatId].action === "done"
+) {
+
+  const photo = msg.photo[msg.photo.length - 1].file_id;
+  const orderId = adminState[chatId].orderId;
+
+  db.get(
+    `SELECT * FROM transactions WHERE order_id = ?`,
+    [orderId],
+    (err, row) => {
+
+      if (!row) {
+        return bot.sendMessage(
+          ADMIN_ID,
+          "❌ Commande introuvable."
+        );
+      }
+
+      const totalData = calcTotal(
+        row.amount,
+        row.method
+      );
+
+      db.run(
+        `UPDATE transactions SET status = "DONE" WHERE order_id = ?`,
+        [orderId]
+      );
+
+      bot.sendPhoto(
+        row.user_id,
+        photo,
+        {
+          caption: `✅ Recharge effectuée avec succès.`
+        }
+      );
+
+      bot.sendMessage(
+        row.user_id,
+        receipt(row, totalData)
+      );
+
+      bot.sendMessage(
+        ADMIN_ID,
+        `✅ Transaction ${orderId} terminée.`
+      );
+
+      delete adminState[chatId];
+    }
+  );
+
+  return;
+        }
   if (!userState[chatId]) return;
   if (userState[chatId].step !== "proof") return;
 
@@ -314,11 +372,18 @@ Notre équipe procède actuellement à la vérification de votre transaction.`
   );
 
   // SEND PHOTO TO ADMIN
+
+  const totalData = calcTotal(
+  userState[chatId].amount,
+  userState[chatId].method
+);
+  
   bot.sendPhoto(
     ADMIN_ID,
     photo,
     {
       caption:
+caption:
 `🚨 NOUVELLE PREUVE
 
 📦 Order :
@@ -333,8 +398,11 @@ ${userState[chatId].service}
 💳 Méthode :
 ${userState[chatId].method}
 
-💰 Montant :
-${userState[chatId].amount}$
+💰 Recharge :
+${userState[chatId].amount} USD
+
+💸 Montant attendu :
+${totalData.total} ${totalData.currency}
 
 📅 ${now()}`
     }
@@ -444,23 +512,15 @@ bot.onText(/^\/done (GNF-\d+)$/, (msg, match) => {
         );
       }
 
-      const totalData = calcTotal(row.amount, row.method);
+      adminState[msg.chat.id] = {
+  action: "done",
+  orderId: orderId
+};
 
-      db.run(
-        `UPDATE transactions SET status = "DONE" WHERE order_id = ?`,
-        [orderId]
-      );
-
-      bot.sendMessage(
-        row.user_id,
-        `✅ Votre recharge a été effectuée avec succès.\n\n${receipt(row, totalData)}`
-      );
-
-      bot.sendMessage(
-        ADMIN_ID,
-        `✅ Transaction terminée et reçu envoyé.`
-      );
-
+bot.sendMessage(
+  ADMIN_ID,
+  `📸 Veuillez envoyer la capture de la recharge pour ${orderId}.`
+);
     }
   );
 
