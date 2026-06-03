@@ -270,7 +270,21 @@ bot.on('message', (msg) => {
 Veuillez entrer un montant correct en USD.`
       );
     }
+if (usd < 10) {
 
+  return bot.sendMessage(
+    chatId,
+    `⚠️ Le montant minimum autorisé est de 10 USD.`
+  );
+}
+
+if (usd > 50) {
+
+  return bot.sendMessage(
+    chatId,
+    `⚠️ Le montant maximum autorisé est de 50 USD.`
+  );
+}
     userState[chatId].amount = usd;
     userState[chatId].step = "method";
 
