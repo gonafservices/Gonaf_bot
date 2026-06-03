@@ -27,6 +27,27 @@ db.serialize(() => {
   `);
 });
 
+db.get(
+  `SELECT order_id
+   FROM transactions
+   ORDER BY id DESC
+   LIMIT 1`,
+  [],
+  (err, row) => {
+
+    if (row && row.order_id) {
+
+      const lastNumber =
+        parseInt(
+          row.order_id.replace("GNF-", "")
+        );
+
+      if (!isNaN(lastNumber)) {
+        orderCounter = lastNumber;
+      }
+    }
+  }
+);
 // ================= VARIABLES =================
 const taux = parseFloat(process.env.TAUX) - 2;
 const frais = parseFloat(process.env.FRAIS);
@@ -48,7 +69,7 @@ ${process.env.PAYPAL2_INFO}`,
 
 // ================= STATES =================
 let userState = {};
-let orderCounter = 1;
+let orderCounter = 0;
 let adminState = {};
 
 // ================= HELPERS =================
@@ -59,7 +80,8 @@ function now() {
 }
 
 function generateOrderId() {
-  return `GNF-${orderCounter++}`;
+  orderCounter++;
+  return `GNF-${orderCounter}`;
 }
 
 function getMethods(service) {
@@ -454,6 +476,9 @@ ${userState[chatId].orderId}
 👤 Client ID :
 ${chatId}
 
+👤 Username :
+@${msg.from.username || "Aucun"}
+
 💼 Service :
 ${userState[chatId].service}
 
@@ -591,7 +616,48 @@ bot.sendMessage(
 
 });
 
-// ================= SAFE =================
+// ================= PENDING =================
+
+bot.onText(/^\/pending$/, (msg) => {
+
+  if (msg.chat.id != ADMIN_ID) return;
+
+  db.all(
+    `SELECT * FROM transactions
+     WHERE status != "DONE"
+     ORDER BY id DESC`,
+    [],
+    (err, rows) => {
+
+      if (!rows || rows.length === 0) {
+
+        return bot.sendMessage(
+          ADMIN_ID,
+          "✅ Aucune commande en attente."
+        );
+      }
+
+      let text = "📦 COMMANDES EN ATTENTE\n\n";
+
+      rows.forEach(row => {
+
+        text +=
+`📦 ${row.order_id}
+💼 ${row.service}
+💰 ${row.amount} USD
+📊 ${row.status}
+
+`;
+      });
+
+      bot.sendMessage(
+        ADMIN_ID,
+        text
+      );
+    }
+  );
+
+});// ================= SAFE =================
 process.on('uncaughtException', console.log);
 process.on('unhandledRejection', console.log);
 
