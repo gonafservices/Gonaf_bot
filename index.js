@@ -33,6 +33,7 @@ const frais = parseFloat(process.env.FRAIS);
 
 // ================= PAYMENT INFOS =================
 const paymentInfo = {
+const paymentInfo = {
   "Moncash": process.env.MONCASH_INFO,
   "PayPal":
 `PayPal 1 :
@@ -42,7 +43,8 @@ PayPal 2 :
 ${process.env.PAYPAL2_INFO}`,
   "Pana": process.env.PANA_INFO,
   "Cash App": process.env.CASHAPP_INFO,
-  "Wise": process.env.WISE_INFO
+  "Wise": process.env.WISE_INFO,
+  "Meru": process.env.MERU_INFO
 };
 
 // ================= STATES =================
@@ -61,8 +63,14 @@ function generateOrderId() {
 }
 
 function getMethods(service) {
-  return ["Moncash", "PayPal", "Pana", "Cash App", "Wise"]
-    .filter(m => m !== service);
+  return [
+    "Moncash",
+    "PayPal",
+    "Pana",
+    "Cash App",
+    "Wise",
+    "Meru"
+  ].filter(m => m !== service);
 }
 
 function calcTotal(amount, method) {
@@ -153,7 +161,7 @@ bot.on('callback_query', (query) => {
   bot.answerCallbackQuery(query.id);
 
   // ===== SERVICE =====
-  if (["Wise", "PayPal", "Pana", "Cash App"].includes(data)) {
+  if (["Wise", "PayPal", "Pana", "Cash App", "Meru"].includes(data)) {
 
     userState[chatId] = {
       service: data,
