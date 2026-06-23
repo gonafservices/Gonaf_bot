@@ -300,11 +300,11 @@ if (usd < 10) {
   );
 }
 
-if (usd > 50) {
+if (usd > 100) {
 
   return bot.sendMessage(
     chatId,
-    `⚠️ Le montant maximum autorisé est de 50 USD.`
+    `⚠️ Le montant maximum autorisé est de 100 USD.`
   );
 }
     userState[chatId].amount = usd;
